@@ -8,7 +8,7 @@ namespace Sandbox.Shared
 {
     public static class GraphClientFactory
     {
-        private const string SandboxClientId = "e0e3cbd2-092c-4136-a633-97baf668875b";
+        private const string SandboxClientId = "0c204bb6-d207-45e6-9252-56ff4909f79e";
         private const string SandboxResourceId = "https://graph.microsoft.com";
 
         private static readonly string[] SandboxScopes =
