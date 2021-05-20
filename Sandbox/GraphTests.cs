@@ -22,12 +22,10 @@ namespace Sandbox
         {
             const string username = "username@mytenantname.onmicrosoft.com";
             const string password = "password";
-            var graphClient = await GraphClientFactory.Create(username, password);
 
-            var myNames = await graphClient.Me.Profile.Names
-                .Request()
-                .WithMaxRetry(5)
-                .GetAsync();
+            var graphClient = await GraphClientFactory.CreateAsync(username, password);
+
+            var myNames = await graphClient.Me.Profile.Names.Request().WithMaxRetry(5).GetAsync();
 
             var myDisplayNames = myNames.Select(n => n.DisplayName);
             this._output.WriteLine("My display names: " + string.Join(", ", myDisplayNames));

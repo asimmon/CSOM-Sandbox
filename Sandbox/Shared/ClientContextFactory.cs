@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.SharePoint.Client;
 
 namespace Sandbox.Shared
@@ -14,12 +14,12 @@ namespace Sandbox.Shared
             (HttpStatusCode) 503
         };
 
-        public static ClientContext Create(string webUrl)
+        public static Task<ClientContext> CreateAsync(string webUrl)
         {
-            return Create(webUrl, string.Empty, string.Empty);
+            return CreateAsync(webUrl, string.Empty, string.Empty);
         }
 
-        public static ClientContext Create(string webUrl, string username, string password)
+        public static async Task<ClientContext> CreateAsync(string webUrl, string username, string password)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
 
@@ -35,7 +35,14 @@ namespace Sandbox.Shared
 
                 if (username.EndsWith(".onmicrosoft.com", StringComparison.OrdinalIgnoreCase))
                 {
-                    context.Credentials = new SharePointOnlineCredentials(username, password.ToSecureString());
+                    var resourceId = GetAssociatedResourceId(new Uri(webUrl, UriKind.Absolute));
+                    var credentials = new OAuth2Credentials(username, password, resourceId);
+                    var tokenResult = await OAuth2Helper.AuthenticateAsync(credentials).ConfigureAwait(false);
+
+                    context.ExecutingWebRequest += (sender, e) =>
+                    {
+                        e.WebRequestExecutor.RequestHeaders["Authorization"] = "Bearer " + tokenResult.AccessToken;
+                    };
                 }
                 else
                 {
@@ -50,7 +57,12 @@ namespace Sandbox.Shared
             return context;
         }
 
-        public static void ExecuteQueryRetry(this ClientRuntimeContext clientContext, int maxRetryCount = 10, int initialDelay = 500)
+        private static string GetAssociatedResourceId(Uri uri)
+        {
+            return uri.GetLeftPart(UriPartial.Authority);
+        }
+
+        public static async Task ExecuteQueryRetryAsync(this ClientRuntimeContext clientContext, int maxRetryCount = 10, int initialDelay = 500)
         {
             if (maxRetryCount <= 0)
                 throw new ArgumentException("Provide a maximum retry count greater than zero.");
@@ -69,11 +81,11 @@ namespace Sandbox.Shared
                     if (request == null)
                     {
                         request = clientContext.PendingRequest;
-                        clientContext.ExecuteQuery();
+                        await clientContext.ExecuteQueryAsync().ConfigureAwait(false);
                     }
                     else
                     {
-                        clientContext.RetryQuery(request);
+                        await clientContext.RetryQueryAsync(request).ConfigureAwait(false);
                     }
 
                     return;
@@ -82,7 +94,7 @@ namespace Sandbox.Shared
                 {
                     if (wex.Response is HttpWebResponse response && ThrottlingHttpStatusCodes.Contains(response.StatusCode))
                     {
-                        Thread.Sleep(initialDelay);
+                        await Task.Delay(initialDelay).ConfigureAwait(false);
 
                         retryAttempts++;
                         initialDelay *= 2;
