@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Sandbox.Shared;
 using Xunit;
 using Xunit.Abstractions;
@@ -14,31 +15,31 @@ namespace Sandbox
         }
 
         [Fact]
-        public void TestOnPremises()
+        public async Task TestOnPremises()
         {
-            const string webUrl = "http://mysharepointserver/sites/MySite/";
+            const string webUrl = "https://mysharepointserver/sites/MySite/";
 
-            using (var context = ClientContextFactory.Create(webUrl))
+            using (var context = await ClientContextFactory.CreateAsync(webUrl))
             {
                 var list = context.Web.Lists.GetByTitle("Documents");
                 context.Load(list);
-                context.ExecuteQueryRetry();
+                await context.ExecuteQueryRetryAsync();
                 this._output.WriteLine(list.Title);
             }
         }
 
         [Fact]
-        public void TestOffice365()
+        public async Task TestOffice365()
         {
             const string webUrl = "https://mytenantname.sharepoint.com/sites/MySite/";
             const string username = "username@mytenantname.onmicrosoft.com";
             const string password = "password";
 
-            using (var context = ClientContextFactory.Create(webUrl, username, password))
+            using (var context = await ClientContextFactory.CreateAsync(webUrl, username, password))
             {
                 var list = context.Web.Lists.GetByTitle("Documents");
                 context.Load(list);
-                context.ExecuteQueryRetry();
+                await context.ExecuteQueryRetryAsync();
                 this._output.WriteLine(list.Title);
             }
         }
