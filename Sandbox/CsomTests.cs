@@ -5,13 +5,10 @@ using Xunit.Abstractions;
 
 namespace Sandbox
 {
-    public class CsomTests
+    public class CsomTests : BaseTest
     {
-        private readonly ITestOutputHelper _output;
-
-        public CsomTests(ITestOutputHelper output)
+        public CsomTests(ITestOutputHelper logger) : base(logger)
         {
-            this._output = output;
         }
 
         [Fact]
@@ -24,7 +21,7 @@ namespace Sandbox
                 var list = context.Web.Lists.GetByTitle("Documents");
                 context.Load(list);
                 await context.ExecuteQueryRetryAsync();
-                this._output.WriteLine(list.Title);
+                this.Logger.WriteLine(list.Title);
             }
         }
 
@@ -40,7 +37,7 @@ namespace Sandbox
                 var list = context.Web.Lists.GetByTitle("Documents");
                 context.Load(list);
                 await context.ExecuteQueryRetryAsync();
-                this._output.WriteLine(list.Title);
+                this.Logger.WriteLine(list.Title);
             }
         }
     }

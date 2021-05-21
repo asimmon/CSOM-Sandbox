@@ -12,7 +12,7 @@ using System.Text.Json.Serialization;
 
 namespace Sandbox
 {
-    public class PowerAutomateTests
+    public class PowerAutomateTests : BaseTest
     {
         private static readonly Uri PowerAutomateApiBaseUrl = new Uri("https://management.azure.com/providers/Microsoft.ProcessSimple/", UriKind.Absolute);
 
@@ -33,11 +33,8 @@ namespace Sandbox
             return httpClient;
         });
 
-        private readonly ITestOutputHelper _output;
-
-        public PowerAutomateTests(ITestOutputHelper output)
+        public PowerAutomateTests(ITestOutputHelper logger) : base(logger)
         {
-            this._output = output;
         }
 
         [Fact]
@@ -45,43 +42,40 @@ namespace Sandbox
         {
             var httpClient = await LazyHttpClientAsync.Value;
 
-            var environmentsJson = await httpClient.GetStringAsync("environments?api-version=2016-11-01");
-            var environments = JsonSerializer.Deserialize<PagedResults<FlowEnvironment>>(environmentsJson);
-            Assert.NotNull(environments);
-            Assert.NotEmpty(environments.Values);
-            this._output.WriteLine("Fetched {0} power automate environment(s)", environments.Values.Count);
-
-            var environment = environments.Values[0];
-            this._output.WriteLine("Retrieving flows for environment: {0}", environment.Name);
+            // Fetch first power apps environment
+            var environments = await FetchPagedItems<FlowEnvironment>(httpClient, "environments?api-version=2016-11-01").ToListAsync();
+            this.Logger.WriteLine("Fetched power apps environment(s): {0}", string.Join(", ", environments.Select(x => x.Name)));
+            Assert.NotEmpty(environments);
+            var environment = environments[0];
 
             // Fetch my personal flows
-            var myFlows = await GetPagedFlows(httpClient, $"environments/{environment.Name}/flows?api-version=2016-11-01").ToListAsync();
-            this._output.WriteLine("Fetched {0} personal flow(s) owned by the current user", myFlows.Count);
+            var myFlows = await FetchPagedItems<Flow>(httpClient, $"environments/{environment.Name}/flows?api-version=2016-11-01").ToListAsync();
+            this.Logger.WriteLine("Fetched {0} personal flow(s) owned by the current user", myFlows.Count);
 
             // As an administrator, fetch all users personal flows and flows stored in solutions
-            var allFlows = await GetPagedFlows(httpClient, $"scopes/admin/environments/{environment.Name}/flows?api-version=2016-11-01&$").ToListAsync();
-            this._output.WriteLine("Fetched {0} personal and solution flow(s)", allFlows.Count);
+            var allFlows = await FetchPagedItems<Flow>(httpClient, $"scopes/admin/environments/{environment.Name}/flows?api-version=2016-11-01&$").ToListAsync();
+            this.Logger.WriteLine("Fetched {0} personal and solution flow(s)", allFlows.Count);
         }
 
-        private static async IAsyncEnumerable<Flow> GetPagedFlows(HttpClient httpClient, string apiUrlStr)
+        private static async IAsyncEnumerable<T> FetchPagedItems<T>(HttpClient httpClient, string apiUrlStr)
         {
             while (true)
             {
-                var myFlowsJson = await httpClient.GetStringAsync(apiUrlStr).ConfigureAwait(false);
-                var myFlowsPage = JsonSerializer.Deserialize<PagedResults<Flow>>(myFlowsJson);
-                Assert.NotNull(myFlowsPage);
+                var jsonItemPage = await httpClient.GetStringAsync(apiUrlStr).ConfigureAwait(false);
+                var itemPage = JsonSerializer.Deserialize<PagedResults<T>>(jsonItemPage);
+                Assert.NotNull(itemPage);
 
-                foreach (var flow in myFlowsPage.Values)
+                foreach (var item in itemPage.Values)
                 {
-                    yield return flow;
+                    yield return item;
                 }
 
-                if (myFlowsPage.NextLink == null)
+                if (itemPage.NextLink == null)
                 {
                     yield break;
                 }
 
-                var apiUrlBuilder = new UriBuilder(myFlowsPage.NextLink);
+                var apiUrlBuilder = new UriBuilder(itemPage.NextLink);
 
                 apiUrlBuilder.Host = PowerAutomateApiBaseUrl.Host;
                 apiUrlBuilder.Scheme = PowerAutomateApiBaseUrl.Scheme;
@@ -91,7 +85,7 @@ namespace Sandbox
             }
         }
 
-        private class PagedResults<T> where T : class
+        private class PagedResults<T>
         {
             [JsonPropertyName("value")]
             public List<T> Values { get; set; }
