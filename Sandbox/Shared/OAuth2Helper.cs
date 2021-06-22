@@ -1,8 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
-using Microsoft.Identity.Client.Extensions.Msal;
 
 namespace Sandbox.Shared
 {
@@ -11,48 +11,68 @@ namespace Sandbox.Shared
         // You can replace it with your own Azure App Registration Client ID as long as it targets multiple organizations.
         private const string SandboxClientId = "0c204bb6-d207-45e6-9252-56ff4909f79e";
 
-        private static readonly Lazy<Task<IPublicClientApplication>> AsyncApp = new Lazy<Task<IPublicClientApplication>>(CreateMsalAppWithCaching);
+        // In order to use app authentication (not delegated), you need to provide your own app client ID above and paste your client secret below.
+        private const string SandboxClientSecret = "<yourAppClientSecret>";
 
-        private static async Task<IPublicClientApplication> CreateMsalAppWithCaching()
+        private static readonly Lazy<Task<IPublicClientApplication>> AsyncPublicApp = new Lazy<Task<IPublicClientApplication>>(CreatePublicAppAsync);
+        private static readonly ConcurrentDictionary<string, Task<IConfidentialClientApplication>> AsyncConfidentialApps = new (StringComparer.OrdinalIgnoreCase);
+
+        private static async Task<IPublicClientApplication> CreatePublicAppAsync()
         {
-            var app = PublicClientApplicationBuilder.Create(SandboxClientId)
+            return await PublicClientApplicationBuilder.Create(SandboxClientId)
                 .WithAuthority(AzureCloudInstance.AzurePublic, AadAuthorityAudience.AzureAdMultipleOrgs)
-                .Build();
-
-            var storageProperties = new StorageCreationPropertiesBuilder(OAuth2CacheSettings.CacheFileName, OAuth2CacheSettings.CacheDir)
-                .WithLinuxKeyring(
-                    OAuth2CacheSettings.LinuxKeyRingSchema,
-                    OAuth2CacheSettings.LinuxKeyRingCollection,
-                    OAuth2CacheSettings.LinuxKeyRingLabel,
-                    OAuth2CacheSettings.LinuxKeyRingAttr1,
-                    OAuth2CacheSettings.LinuxKeyRingAttr2)
-                .WithMacKeyChain(
-                    OAuth2CacheSettings.KeyChainServiceName,
-                    OAuth2CacheSettings.KeyChainAccountName)
-                .Build();
-
-            var cacheHelper = await MsalCacheHelper.CreateAsync(storageProperties).ConfigureAwait(false);
-            cacheHelper.RegisterCache(app.UserTokenCache);
-
-            return app;
+                .Build()
+                .SetupSecuredCache(x => x.UserTokenCache)
+                .ConfigureAwait(false);
         }
 
-        public static Task<AuthenticationResult> AuthenticateAsync(string username, string password, string resourceId)
+        private static async Task<IConfidentialClientApplication> CreateConfidentialAppAsync(string tenantName)
         {
-            return AuthenticateAsync(new OAuth2Credentials(username, password, resourceId));
+            static Task<IConfidentialClientApplication> AsyncConfidentialAppFactory(string tn)
+            {
+                return ConfidentialClientApplicationBuilder.Create(SandboxClientId)
+                    .WithClientSecret(SandboxClientSecret)
+                    .WithTenantId(tn + ".onmicrosoft.com")
+                    .Build()
+                    .SetupSecuredCache(x => x.AppTokenCache);
+            }
+
+            return await AsyncConfidentialApps.GetOrAdd(tenantName, AsyncConfidentialAppFactory).ConfigureAwait(false);
         }
 
-        public static async Task<AuthenticationResult> AuthenticateAsync(OAuth2Credentials credentials)
+        public static async Task<AuthenticationResult> AuthenticateAsAppAsync(OAuth2AppAuthenticationOptions options)
         {
-            var resourceWithDefaultScope = new[] { $"{credentials.ResourceId}/.default" };
+            var resourceWithDefaultScope = new[] { $"{options.ResourceId}/.default" };
 
-            var app = await AsyncApp.Value.ConfigureAwait(false);
+            var app = await CreateConfidentialAppAsync(options.TenantName).ConfigureAwait(false);
+
+            try
+            {
+                return await app.AcquireTokenForClient(resourceWithDefaultScope).ExecuteAsync().ConfigureAwait(false);
+            }
+            catch (MsalUiRequiredException ex)
+            {
+                var consentWebUrl = $"https://login.microsoftonline.com/common/oauth2/authorize?resource={options.ResourceId}&client_id={SandboxClientId}&response_type=code&prompt=consent";
+                throw new Exception($"Please consent the sandbox azure application on your tenant at {consentWebUrl}", ex);
+            }
+        }
+
+        public static Task<AuthenticationResult> AuthenticateAsUserAsync(string username, string password, string resourceId)
+        {
+            return AuthenticateAsUserAsync(new OAuth2UserAuthenticationOptions(username, password, resourceId));
+        }
+
+        public static async Task<AuthenticationResult> AuthenticateAsUserAsync(OAuth2UserAuthenticationOptions options)
+        {
+            var resourceWithDefaultScope = new[] { $"{options.ResourceId}/.default" };
+
+            var app = await AsyncPublicApp.Value.ConfigureAwait(false);
             var accounts = await app.GetAccountsAsync().ConfigureAwait(false);
-            var account = accounts.FirstOrDefault(x => credentials.Username.Equals(x.Username, StringComparison.OrdinalIgnoreCase));
+            var account = accounts.FirstOrDefault(x => options.Username.Equals(x.Username, StringComparison.OrdinalIgnoreCase));
 
             if (account != null)
             {
-                if (credentials.IsCachingEnabled)
+                if (options.IsCachingEnabled)
                 {
                     try
                     {
@@ -71,13 +91,13 @@ namespace Sandbox.Shared
 
             try
             {
-                return await app.AcquireTokenByUsernamePassword(resourceWithDefaultScope, credentials.Username, credentials.SecuredPassword)
+                return await app.AcquireTokenByUsernamePassword(resourceWithDefaultScope, options.Username, options.SecuredPassword)
                     .ExecuteAsync()
                     .ConfigureAwait(false);
             }
             catch (MsalUiRequiredException ex)
             {
-                var consentWebUrl = $"https://login.microsoftonline.com/common/oauth2/authorize?resource={credentials.ResourceId}&client_id={SandboxClientId}&response_type=code&prompt=consent";
+                var consentWebUrl = $"https://login.microsoftonline.com/common/oauth2/authorize?resource={options.ResourceId}&client_id={SandboxClientId}&response_type=code&prompt=consent";
                 throw new Exception($"Please consent the sandbox azure application on your tenant at {consentWebUrl}", ex);
             }
         }

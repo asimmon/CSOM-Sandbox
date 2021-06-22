@@ -6,19 +6,34 @@ namespace Sandbox.Shared
 {
     public static class GraphClientFactory
     {
-        public static Task<GraphServiceClient> CreateAsync(string username, string password)
+        public static Task<GraphServiceClient> CreateAsUserAsync(string username, string password)
         {
-            return CreateAsync(new OAuth2Credentials(username, password, KnownResourceIds.Graph));
+            return CreateAsUserAsync(new OAuth2UserAuthenticationOptions(username, password, KnownResourceIds.Graph));
         }
 
-        public static async Task<GraphServiceClient> CreateAsync(OAuth2Credentials credentials)
+        public static async Task<GraphServiceClient> CreateAsUserAsync(OAuth2UserAuthenticationOptions options)
         {
-            var graphEnforcedCredentials = new OAuth2Credentials(credentials.Username, credentials.Password, KnownResourceIds.Graph)
+            var graphEnforcedOptions = new OAuth2UserAuthenticationOptions(options.Username, options.Password, KnownResourceIds.Graph)
             {
-                IsCachingEnabled = credentials.IsCachingEnabled
+                IsCachingEnabled = options.IsCachingEnabled
             };
 
-            var tokenResult = await OAuth2Helper.AuthenticateAsync(graphEnforcedCredentials).ConfigureAwait(false);
+            var tokenResult = await OAuth2Helper.AuthenticateAsUserAsync(graphEnforcedOptions).ConfigureAwait(false);
+
+            var authProvider = new DelegateAuthenticationProvider(request =>
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokenResult.AccessToken);
+                return Task.CompletedTask;
+            });
+
+            return new GraphServiceClient(authProvider);
+        }
+
+        public static async Task<GraphServiceClient> CreateAsAppAsync(string tenantName)
+        {
+            var graphEnforcedOptions = new OAuth2AppAuthenticationOptions(tenantName, KnownResourceIds.Graph);
+
+            var tokenResult = await OAuth2Helper.AuthenticateAsAppAsync(graphEnforcedOptions).ConfigureAwait(false);
 
             var authProvider = new DelegateAuthenticationProvider(request =>
             {

@@ -21,8 +21,8 @@ namespace Sandbox
             const string username = "username@mytenantname.onmicrosoft.com";
             const string password = "password";
 
-            var credentials = new OAuth2Credentials(username, password, KnownResourceIds.AzureManagement);
-            var authenticationResult = await OAuth2Helper.AuthenticateAsync(credentials).ConfigureAwait(false);
+            var credentials = new OAuth2UserAuthenticationOptions(username, password, KnownResourceIds.AzureManagement);
+            var authenticationResult = await OAuth2Helper.AuthenticateAsUserAsync(credentials).ConfigureAwait(false);
 
             var httpClient = new HttpClient();
 

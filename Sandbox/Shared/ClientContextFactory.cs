@@ -36,8 +36,8 @@ namespace Sandbox.Shared
                 if (username.EndsWith(".onmicrosoft.com", StringComparison.OrdinalIgnoreCase))
                 {
                     var resourceId = GetAssociatedResourceId(new Uri(webUrl, UriKind.Absolute));
-                    var credentials = new OAuth2Credentials(username, password, resourceId);
-                    var tokenResult = await OAuth2Helper.AuthenticateAsync(credentials).ConfigureAwait(false);
+                    var credentials = new OAuth2UserAuthenticationOptions(username, password, resourceId);
+                    var tokenResult = await OAuth2Helper.AuthenticateAsUserAsync(credentials).ConfigureAwait(false);
 
                     context.ExecutingWebRequest += (sender, e) =>
                     {
