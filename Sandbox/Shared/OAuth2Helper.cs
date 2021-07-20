@@ -30,11 +30,12 @@ namespace Sandbox.Shared
         {
             static Task<IConfidentialClientApplication> AsyncConfidentialAppFactory(string tn)
             {
-                return ConfidentialClientApplicationBuilder.Create(SandboxClientId)
+                var configuredApp = ConfidentialClientApplicationBuilder.Create(SandboxClientId)
                     .WithClientSecret(SandboxClientSecret)
                     .WithTenantId(tn + ".onmicrosoft.com")
-                    .Build()
-                    .SetupSecuredCache(x => x.AppTokenCache);
+                    .Build();
+
+                return Task.FromResult(configuredApp);
             }
 
             return await AsyncConfidentialApps.GetOrAdd(tenantName, AsyncConfidentialAppFactory).ConfigureAwait(false);
